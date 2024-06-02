@@ -7,6 +7,8 @@ This script relies on `systemd-run` (for direct memory management) and `taskset`
 How to use
 ---
 
+Put the script in the bin folder of IntelliJ (where the original idea.sh script is located) and run this instead of the original.
+
 ```sh
 env PARAM=val ./idea_mod.sh
 ```
@@ -15,4 +17,3 @@ env PARAM=val ./idea_mod.sh
 |:---:|:-----:|:-----------:|
 | RAM_LIMIT | sizeG or M | Max RAM limit allowed |
 | CPU_SET_ARGS | core list like: 1,2,3,4 | force CPU core to use |
-
