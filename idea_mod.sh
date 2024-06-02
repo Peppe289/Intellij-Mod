@@ -173,7 +173,121 @@ CLASS_PATH="$CLASS_PATH:$IDE_HOME/lib/trove.jar"
 # ---------------------------------------------------------------------
 IFS="$(printf '\n\t')"
 # shellcheck disable=SC2086
-exec "$JAVA_BIN" \
+
+# [MOD]
+# Initialize variables to store RAM limit and CPU affinity values.
+RAM_UNITY_VAL=""
+MEMORY_FLAGS_ARGS=""
+CPU_SET_ARGS=""
+
+# Function to handle errors and exit the script.
+# Prints the error message passed as an argument and exits with a status of 1.
+# Arguments:
+#   $1 - The error message to display.
+error_func() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+# Function to extract the value after the equal sign in a parameter.
+# This function assumes the parameter is in the format 'key=value' and extracts 'value'.
+# Arguments:
+#   $1 - The parameter from which to extract the value.
+# Outputs:
+#   Prints the value extracted from the parameter.
+get_value() {
+    local param="$1"
+    echo "$param" | cut -d= -f2
+}
+
+# Function to validate if the CPU set input is in the correct format (numbers and commas).
+# If the input is invalid, it calls error_func to exit the script.
+# Arguments:
+#   $1 - The input string representing the CPU set.
+validate_cpu_set() {
+    local input="$1"
+    local pattern='^[0-9,]+$'
+    
+    if ! [[ $input =~ $pattern ]]; then
+        error_func "Invalid input as CPU set"
+    fi
+}
+
+# Function to log custom messages.
+# Arguments:
+#   $1 - The message to log.
+customLog() {
+    echo "### [MOD]: ${1}"
+}
+
+# Loop through the arguments passed to the script.
+# Processes known options and extracts their values.
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --help_mod)
+            # Display help message and exit.
+            echo "./idea_mod.sh - Custom profile"
+            echo " "
+            echo "env [ENV] ./idea_mod.sh"
+            echo " "
+            echo "Possibile ENV var: "
+            echo "env RAM_LIMIT -> for limit RAM usage for example for give only 1GB:"
+            echo "                  env RAM_LIMIT=1G ./idea_mod.sh"
+            echo "env CORE_AFFINITY -> for force CPU affinity for example for give only core 1,2,3:"
+            echo "                  env CORE_AFFINITY=1,2,3 ./idea_mod.sh"
+            exit 0
+        ;;
+    esac
+done
+
+# Check if RAM_LIMIT is set and process it.
+if [ "$RAM_LIMIT" != "" ]; then
+    # Extract the last character to determine the unit (G or M).
+    RAM_UNITY_VAL=$(echo "$RAM_LIMIT" | awk '{print substr($0, length, 1)}')
+    # Remove the last character from RAM_LIMIT.
+    RAM_LIMIT=${RAM_LIMIT::-1}
+    
+    # Validate that RAM_LIMIT is a number.
+    re='^[0-9]+$'
+    if ! [[ $RAM_LIMIT =~ $re ]]; then
+        error_func "Not a number"
+    fi
+    
+    # Determine the RAM unit and log it.
+    case $RAM_UNITY_VAL in
+        "G")
+            customLog "Set RAM unit as gigabytes"
+        ;;
+        "M")
+            customLog "Set RAM unit as megabytes"
+        ;;
+        *)
+            error_func "Invalid unit value"
+        ;;
+    esac
+
+    # Log the RAM limit value.
+    customLog "RAM LIMIT: ${RAM_LIMIT}"
+    MEMORY_FLAGS_ARGS="systemd-run --scope -p MemoryLimit=$RAM_LIMIT$RAM_UNITY_VAL"
+fi
+
+# Check if CORE_AFFINITY is set and process it.
+if [ "$CORE_AFFINITY" != "" ]; then
+    # Validate the CPU set format.
+    validate_cpu_set $CORE_AFFINITY
+    # Log the CPU affinity value.
+    customLog "CPU AFFINITY: $CORE_AFFINITY"
+    CPU_SET_ARGS="taskset -c $CORE_AFFINITY"
+    customLog "Start with $CPU_SET_ARGS"
+fi
+
+# ---------------------------------------------------------------------
+# MOD: limit RAM usage
+# ---------------------------------------------------------------------
+# Since since `-Xmx512m -Xms512m -Xss512m` doesn't work well with what we want to do,
+# we can directly use linux services to give less ram.
+# ---------------------------------------------------------------------
+eval exec "$MEMORY_FLAGS_ARGS" "$CPU_SET_ARGS" "$JAVA_BIN" \
   -classpath "$CLASS_PATH" \
   "-XX:ErrorFile=$HOME/java_error_in_idea_%p.log" \
   "-XX:HeapDumpPath=$HOME/java_error_in_idea_.hprof" \
